@@ -199,21 +199,76 @@ function FileDropZone({ tab, onFile, hasError }) {
 }
 
 /* ── Simulated backend — swap with real fetch() when Django is running ── */
-async function runAnalysis(tab, text) {
-  await new Promise(r => setTimeout(r, 3200));
-  const keys = ["lottery","won","prize","urgent","click","verify","internship","earn",
-    "otp","account","suspend","bank","password","free","act now","kyc","congratulations","whatsapp"];
-  const hits = tab === "text"
-    ? keys.filter(k => (text || "").toLowerCase().includes(k)).length
-    : Math.floor(Math.random() * 5) + 2;
-  const fake = Math.min(96, 14 + hits * 12 + Math.floor(Math.random() * 15));
-  const real = 100 - fake;
+/* ── REAL BACKEND CONNECTION ── */
+async function runRealAnalysis(tab, text, file) {
+  let endpoint = "http://127.0.0.1:8000/api/analyze-text/";
+  let options = {};
+
+  // 1. Package the data based on the tab
+  if (tab === "text") {
+    options = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_text: text })
+    };
+  } else {
+    // For audio and video, we use FormData
+    endpoint = tab === "video" 
+      ? "http://127.0.0.1:8000/api/analyze-video/" 
+      : "http://127.0.0.1:8000/api/analyze-audio/";
+    
+    const formData = new FormData();
+    formData.append(tab, file); // The key 'audio' or 'video' matches Django
+    
+    options = {
+      method: "POST",
+      body: formData
+    };
+  }
+
+  // 2. Send to Django
+  const response = await fetch(endpoint, options);
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "AI Server is currently sleeping or unavailable.");
+  }
+
+  const data = await response.json();
+
+  // 3. Translate Django's response to your UI's format
+  let fake = 0;
+  let real = 0;
+
+  if (data.is_fake) {
+    fake = Math.round(data.confidence_score);
+    real = 100 - fake;
+  } else {
+    real = Math.round(data.confidence_score);
+    fake = 100 - real;
+  }
+
   const risk = fake > 60 ? "High" : fake > 33 ? "Medium" : "Low";
+
+  // Your original UI explanations!
   const exps = {
-    High: ["⚠ Urgency manipulation detected — designed to make you panic","⚠ Matches known scam/phishing templates with high confidence","⚠ Requests sensitive personal data under false legitimacy","⚠ AI verdict: high probability fraudulent — do not respond","💡 Legitimate banks never ask for OTPs or passwords via message"],
-    Medium: ["⚠ Some phrases used in social engineering attacks found","⚠ Mild urgency triggers present — verify before responding","⚠ Source credibility cannot be confirmed from this message alone","💡 Call the organization on their official number to confirm"],
-    Low: ["✓ No strong fraud indicators detected","✓ Language pattern appears natural and coherent","✓ No suspicious links or data-harvesting attempts found","💡 Content appears legitimate — good instinct checking anyway"],
+    High: [
+      "⚠ AI verdict: High probability of synthetic or fraudulent content",
+      "⚠ Matches known scam/deepfake artifacts with high confidence",
+      "🛑 Do not trust this source or provide any sensitive data"
+    ],
+    Medium: [
+      "⚠ AI detected some anomalies or unusual patterns",
+      "⚠ Source credibility cannot be fully confirmed",
+      "💡 Verify through an official channel before proceeding"
+    ],
+    Low: [
+      "✓ No strong fraud or deepfake indicators detected",
+      "✓ Media pattern appears natural and coherent",
+      "💡 Content appears legitimate based on AI analysis"
+    ],
   };
+
   return { fakeScore: fake, realScore: real, risk, explanations: exps[risk] };
 }
 
@@ -244,7 +299,7 @@ function Analyzer({ analyzerRef }) {
     setLoading(true); setResults(null); setErr(""); setStep(0);
     const timer = setInterval(() => setStep(p => p < STEPS.length - 1 ? p + 1 : p), 750);
     try {
-      const data = await runAnalysis(tab, text);
+      const data = await runRealAnalysis(tab, text, file);
       clearInterval(timer); setStep(STEPS.length); setResults(data);
     } catch (e) {
       clearInterval(timer);
