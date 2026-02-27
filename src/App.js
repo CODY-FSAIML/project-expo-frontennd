@@ -253,7 +253,12 @@ async function runAnalysis(tab, text, file) {
       : `${baseUrl}/api/analyze-audio/`;
     
     const formData = new FormData();
+    // Send it under the tab name ('video' or 'audio')
     formData.append(tab, file); 
+    // ALSO send it under 'media_file' just in case Django's Serializer expects that!
+    formData.append("media_file", file); 
+    // Add a title just in case your database requires one
+    formData.append("title", "Expo Test Upload");
     
     options = {
       method: "POST",
@@ -265,12 +270,14 @@ async function runAnalysis(tab, text, file) {
   const response = await fetch(endpoint, options);
   
   if (!response.ok) {
-    let errorMessage = "AI Server failed to respond. Ensure the backend is running.";
+    let errorMessage = `Server returned ${response.status}`;
     try {
       const errData = await response.json();
-      if (errData.error) errorMessage = errData.error;
+      // Print the exact Django error to the screen!
+      errorMessage = JSON.stringify(errData); 
+      console.error("DJANGO SAYS:", errData);
     } catch (e) {}
-    throw new Error(errorMessage);
+    throw new Error(`Fix this: ${errorMessage}`);
   }
 
   const data = await response.json();
