@@ -341,9 +341,9 @@ function Analyzer({ analyzerRef }) {
       const data = await runAnalysis(tab, text, file);
       clearInterval(timer); setStep(STEPS.length); setResults(data);
     } catch (e) {
-      clearInterval(timer);
-      setErr(e.message?.includes("fetch") ? "Cannot reach server. Is Django running on localhost:8000?" : e.message);
-    } finally { setLoading(false); }
+  clearInterval(timer);
+  setErr(e.message === "Failed to fetch" ? "Connection blocked (CORS). Is the Vercel URL inside Django's settings.py?" : e.message);
+    } 
   };
 
   const riskBorder = results ? (results.risk === "High" ? "rgba(220,60,60,0.3)" : results.risk === "Medium" ? "rgba(217,140,60,0.3)" : "rgba(32,178,155,0.3)") : "";
