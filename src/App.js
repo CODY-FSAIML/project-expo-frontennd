@@ -232,6 +232,7 @@ function FileDropZone({ tab, onFile, hasError }) {
 /* ── REAL BACKEND CONNECTION ── */
 /* ── LIVE RENDER BACKEND CONNECTION ── */
 /* ── REAL RENDER BACKEND CONNECTION ── */
+/* ── REAL BACKEND CONNECTION ── */
 async function runAnalysis(tab, text, file) {
   // 1. Your official live Render server URL
   const baseUrl = "https://project-expo-backend-zpcr.onrender.com";
@@ -240,29 +241,37 @@ async function runAnalysis(tab, text, file) {
 
   // 2. Package the data based on what the user is analyzing
   if (tab === "text") {
-    endpoint = `${baseUrl}/api/analyze-text/`;
+    // FIX 1: Removed the trailing slash!
+    endpoint = `${baseUrl}/api/analyze-text`; 
+    
     options = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content_text: text || "" })
+      // FIX 2: Added 'Accept' to force Django to talk in JSON
+      headers: { 
+        "Accept": "application/json",
+        "Content-Type": "application/json" 
+      },
+      // FIX 3: Sending multiple keys just to be 100% sure Django catches it
+      body: JSON.stringify({ 
+        content_text: text,
+        text: text,
+        content: text
+      })
     };
   } else {
-    // For audio and video
+    // FIX 4: Removed trailing slashes for audio and video too!
     endpoint = tab === "video" 
-      ? `${baseUrl}/api/analyze-video/` 
-      : `${baseUrl}/api/analyze-audio/`;
+      ? `${baseUrl}/api/analyze-video` 
+      : `${baseUrl}/api/analyze-audio`;
     
     const formData = new FormData();
-    // Send it under the tab name ('video' or 'audio')
     formData.append(tab, file); 
-    // ALSO send it under 'media_file' just in case Django's Serializer expects that!
     formData.append("media_file", file); 
-    // Add a title just in case your database requires one
     formData.append("title", "Expo Test Upload");
     
     options = {
       method: "POST",
-      body: formData
+      body: formData // Never put Content-Type for FormData, the browser does it automatically!
     };
   }
 
@@ -273,11 +282,10 @@ async function runAnalysis(tab, text, file) {
     let errorMessage = `Server returned ${response.status}`;
     try {
       const errData = await response.json();
-      // Print the exact Django error to the screen!
       errorMessage = JSON.stringify(errData); 
       console.error("DJANGO SAYS:", errData);
     } catch (e) {}
-    throw new Error(`Fix this: ${errorMessage}`);
+    throw new Error(`Backend Error: ${errorMessage}`);
   }
 
   const data = await response.json();
@@ -317,7 +325,6 @@ async function runAnalysis(tab, text, file) {
 
   return { fakeScore: fake, realScore: real, risk, explanations: exps[risk] };
 }
-
 /* ── Analyzer ── */
 function Analyzer({ analyzerRef }) {
   const [text, setText] = useState("");
